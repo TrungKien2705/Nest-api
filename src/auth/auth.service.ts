@@ -35,7 +35,7 @@ export class AuthService {
     }
   }
 
-  async login(data: AuthDTO) {
+  async login(data: AuthDTO, response: any) {
     const user = await this.prisma.user.findUnique({
       where: {
         email: data.email,
@@ -53,18 +53,42 @@ export class AuthService {
     }
 
     delete user.hashedPassword;
+    const access_token = await this.accessToken(user);
+    const refresh_token = await this.refreshToken(user);
+
+    response.cookie('refresh_token', refresh_token, { httpOnly: true });
     return {
       msg: 'Login success!',
-      token: await this.convertToJwt(user),
+      access_token,
     };
   }
-  async convertToJwt(data: dataToken): Promise<string> {
+  async accessToken(data: dataToken): Promise<string> {
     const payload = {
       data,
     };
     return this.jwt.signAsync(payload, {
-      expiresIn: '24h',
-      secret: this.config.get('JWT_SECRET'),
+      expiresIn: '30s',
+      secret: this.config.get('ACCESS_TOKEN'),
     });
+  }
+  async refreshToken(data: dataToken): Promise<string> {
+    const payload = {
+      data,
+    };
+    return this.jwt.signAsync(payload, {
+      expiresIn: '30d',
+      secret: this.config.get('REFRESH_TOKEN'),
+    });
+  }
+  async refreshService(refreshToken: string, data: dataToken, response: any) {
+    if (!refreshToken) {
+      throw new ForbiddenException('You not authenticated');
+    }
+    const access_token = await this.accessToken(data);
+    const refresh_token = await this.refreshToken(data);
+    response.cookie('refresh_token', refresh_token, { httpOnly: true });
+    return {
+      access_token,
+    };
   }
 }
